@@ -7,57 +7,105 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 
+
 class RelevanceEngine:
+
 
     TOPIC_KEYWORDS = {
 
+
         "fitness": [
+
             "fitness",
             "gym",
             "workout",
+            "workouts",
             "training",
             "bodybuilding",
+            "bodybuilder",
             "exercise",
             "muscle",
             "strength",
             "cardio",
-            "yoga"
+            "yoga",
+            "nutrition",
+            "diet",
+            "protein",
+            "coach",
+            "trainer",
+            "athlete",
+            "physique",
+            "weightlifting",
+            "crossfit"
+
         ],
 
+
+
         "beauty": [
+
             "beauty",
             "makeup",
             "skincare",
             "cosmetics",
-            "hair"
+            "hair",
+            "fashion",
+            "style",
+            "glow",
+            "lifestyle"
+
         ],
 
+
+
         "fashion": [
+
             "fashion",
             "style",
             "clothing",
             "outfit",
-            "designer"
+            "designer",
+            "model",
+            "luxury",
+            "streetwear"
+
         ],
 
+
+
         "sports": [
+
             "sports",
             "football",
             "cricket",
             "basketball",
-            "athlete"
+            "athlete",
+            "player",
+            "team",
+            "training"
+
         ],
 
+
+
         "technology": [
+
             "technology",
             "coding",
             "software",
             "developer",
+            "programming",
             "ai",
-            "machine learning"
+            "machine learning",
+            "data",
+            "computer"
+
         ]
 
     }
+
+
+
 
     @classmethod
     def get_keywords(
@@ -65,12 +113,54 @@ class RelevanceEngine:
         topic
     ):
 
-        topic = topic.lower().strip()
+
+        topic = (
+            str(topic)
+            .lower()
+            .strip()
+        )
+
 
         if topic in cls.TOPIC_KEYWORDS:
+
             return cls.TOPIC_KEYWORDS[topic]
 
+
         return topic.split()
+
+
+
+
+
+    @staticmethod
+    def normalize(
+        series
+    ):
+
+
+        minimum = series.min()
+
+        maximum = series.max()
+
+
+        if maximum == minimum:
+
+            return pd.Series(
+                [0] * len(series),
+                index=series.index
+            )
+
+
+        return (
+            series - minimum
+        ) / (
+            maximum - minimum
+        )
+
+
+
+
+
 
     @classmethod
     def keyword_score(
@@ -79,29 +169,63 @@ class RelevanceEngine:
         keywords
     ):
 
+
         scores = []
+
 
         for text in texts.fillna("").astype(str):
 
+
             text = text.lower()
 
+
+
             hits = sum(
+
                 1
-                for word in keywords
-                if word in text
+
+                for keyword in keywords
+
+                if keyword.lower() in text
+
             )
+
+
+
+            score = (
+
+                hits /
+
+                len(keywords)
+
+            )
+
+
 
             scores.append(
+
                 min(
-                    hits / len(keywords),
+                    score,
                     1
                 )
+
             )
 
+
+
         return pd.Series(
+
             scores,
+
             index=texts.index
+
         )
+
+
+
+
+
+
 
     @classmethod
     def semantic_score(
@@ -109,26 +233,79 @@ class RelevanceEngine:
         texts,
         topic
     ):
-        """
-        Uses cached document embeddings.
-        Only the query is encoded.
-        """
 
-        EmbeddingCache.ensure_ready()
 
-        query_embedding = EmbeddingEngine.encode(
-            [topic]
-        )[0]
+        try:
 
-        scores = EmbeddingEngine.similarity(
-            query_embedding,
-            EmbeddingCache.embeddings
-        )
 
-        return pd.Series(
-            scores,
-            index=texts.index
-        )
+            EmbeddingCache.ensure_ready()
+
+
+
+            query_embedding = (
+
+                EmbeddingEngine
+                .encode(
+                    [
+                        topic
+                    ]
+                )[0]
+
+            )
+
+
+
+            scores = (
+
+                EmbeddingEngine
+                .similarity(
+                    query_embedding,
+                    EmbeddingCache.embeddings
+                )
+
+            )
+
+
+
+            scores = pd.Series(
+
+                scores[:len(texts)],
+
+                index=texts.index
+
+            )
+
+
+
+            return cls.normalize(
+                scores
+            )
+
+
+
+        except Exception as e:
+
+
+            print(
+                "[Semantic Error]",
+                e
+            )
+
+
+
+            return pd.Series(
+
+                [0] * len(texts),
+
+                index=texts.index
+
+            )
+
+
+
+
+
+
 
     @classmethod
     def tfidf_score(
@@ -137,30 +314,90 @@ class RelevanceEngine:
         topic
     ):
 
-        corpus = list(
-            texts.astype(str)
-        )
 
-        vectorizer = TfidfVectorizer(
-            stop_words="english",
-            ngram_range=(1, 2)
-        )
+        try:
 
-        matrix = vectorizer.fit_transform(
-            corpus + [topic]
-        )
 
-        query_vector = matrix[-1]
+            corpus = (
 
-        scores = cosine_similarity(
-            query_vector,
-            matrix[:-1]
-        )[0]
+                texts
+                .fillna("")
+                .astype(str)
+                .tolist()
 
-        return pd.Series(
-            scores,
-            index=texts.index
-        )
+            )
+
+
+
+            vectorizer = TfidfVectorizer(
+
+                stop_words="english",
+
+                ngram_range=(1,2)
+
+            )
+
+
+
+            matrix = (
+
+                vectorizer
+                .fit_transform(
+
+                    corpus + [topic]
+
+                )
+
+            )
+
+
+
+            query_vector = matrix[-1]
+
+
+
+            scores = (
+
+                cosine_similarity(
+
+                    query_vector,
+
+                    matrix[:-1]
+
+                )[0]
+
+            )
+
+
+
+            return pd.Series(
+
+                scores,
+
+                index=texts.index
+
+            )
+
+
+
+        except Exception:
+
+
+
+            return pd.Series(
+
+                [0] * len(texts),
+
+                index=texts.index
+
+            )
+
+
+
+
+
+
+
 
     @classmethod
     def hybrid_relevance(
@@ -169,32 +406,79 @@ class RelevanceEngine:
         topic
     ):
 
-        keywords = cls.get_keywords(
-            topic
+
+
+        keywords = (
+
+            cls.get_keywords(
+                topic
+            )
+
         )
 
-        keyword = cls.keyword_score(
-            text_series,
-            keywords
+
+
+        keyword = (
+
+            cls.keyword_score(
+
+                text_series,
+
+                keywords
+
+            )
+
         )
 
-        semantic = cls.semantic_score(
-            text_series,
-            topic
+        # Normalize keyword score to 0-1 range so its weight is
+        # comparable to semantic/tfidf. Without this, keyword's real
+        # max is ~1/len(keywords), so its 0.40 weight barely matters.
+        keyword = cls.normalize(keyword)
+
+
+
+        semantic = (
+
+            cls.semantic_score(
+
+                text_series,
+
+                topic
+
+            )
+
         )
 
-        tfidf = cls.tfidf_score(
-            text_series,
-            topic
+
+
+        tfidf = (
+
+            cls.tfidf_score(
+
+                text_series,
+
+                topic
+
+            )
+
         )
+
+        # Normalize tfidf for the same reason as keyword above.
+        tfidf = cls.normalize(tfidf)
+
+
+
+
+        # Final relevance score
+        # Keyword matching is stronger to avoid unrelated influencers
 
         relevance = (
 
-            semantic * 0.65
+            semantic * 0.45
 
             +
 
-            keyword * 0.20
+            keyword * 0.40
 
             +
 
@@ -202,10 +486,32 @@ class RelevanceEngine:
 
         )
 
-        return (
-            relevance.clip(0, 1),
-            keywords
+        # Suppress relevance for profiles with zero keyword hits.
+        # Semantic similarity alone is noisy on short text (bios/names)
+        # and shouldn't be able to carry an unrelated profile to the top
+        # just because normalization stretched its score toward 1.0.
+        relevance = relevance.where(
+            keyword > 0,
+            relevance * 0.15
         )
+
+
+        return (
+
+            relevance.clip(
+                0,
+                1
+            ),
+
+            keywords
+
+        )
+
+
+
+
+
+
 
     @classmethod
     def keyword_relevance(
@@ -214,16 +520,36 @@ class RelevanceEngine:
         topic
     ):
 
-        keywords = cls.get_keywords(
-            topic
+
+
+        keywords = (
+
+            cls.get_keywords(
+                topic
+            )
+
         )
 
-        scores = cls.keyword_score(
-            text_series,
-            keywords
+
+
+        scores = (
+
+            cls.keyword_score(
+
+                text_series,
+
+                keywords
+
+            )
+
         )
+
+
 
         return (
+
             scores,
+
             keywords
+
         )

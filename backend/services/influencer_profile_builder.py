@@ -1,15 +1,21 @@
-from sqlalchemy import text
+import pandas as pd
 
 from core.database import SessionLocal
+from models.influencer import Influencer
 
 
 class InfluencerProfileBuilder:
 
+
     @staticmethod
-    def clean(value):
+    def clean_text(value):
+
         if value is None:
             return ""
-        return value
+
+        return str(value).strip()
+
+
 
     @classmethod
     def build_profiles(cls):
@@ -18,99 +24,141 @@ class InfluencerProfileBuilder:
 
         try:
 
-            query = text("""
-                SELECT
-                    i.id,
-                    i.username,
-                    i.full_name,
-                    i.platform,
-                    i.bio,
-                    i.category,
-                    i.followers,
-                    i.following,
-                    i.posts_count,
-                    i.avg_likes,
-                    i.avg_comments,
-                    i.engagement_rate,
-                    i.verified,
+            influencers = (
+                db.query(Influencer)
+                .order_by(Influencer.id)
+                .all()
+            )
 
-                    GROUP_CONCAT(
-                        COALESCE(p.caption,''),
-                        ' '
-                    ) AS captions,
-
-                    GROUP_CONCAT(
-                        COALESCE(p.hashtags,''),
-                        ' '
-                    ) AS hashtags
-
-                FROM influencers i
-
-                LEFT JOIN posts p
-                    ON i.id = p.influencer_id
-
-                GROUP BY i.id
-            """)
-
-            rows = db.execute(query).fetchall()
 
             profiles = []
 
-            for row in rows:
 
-                username = cls.clean(row.username)
-                fullname = cls.clean(row.full_name)
-                platform = cls.clean(row.platform)
-                category = cls.clean(row.category)
-                bio = cls.clean(row.bio)
-                captions = cls.clean(row.captions)
-                hashtags = cls.clean(row.hashtags)
+            for influencer in influencers:
 
-                profile_text = " ".join([
-                    str(fullname),
-                    str(username),
-                    str(platform),
-                    str(category),
-                    str(bio),
-                    str(captions),
-                    str(hashtags)
-                ])
 
-                profiles.append({
+                username = cls.clean_text(
+                    influencer.username
+                )
 
-                    "id": row.id,
+                full_name = cls.clean_text(
+                    influencer.full_name
+                )
 
-                    "username": username,
+                platform = cls.clean_text(
+                    influencer.platform
+                )
 
-                    "full_name": fullname,
+                category = cls.clean_text(
+                    influencer.category
+                )
 
-                    "platform": platform,
+                bio = cls.clean_text(
+                    influencer.bio
+                )
 
-                    "category": category,
 
-                    "bio": bio,
+                #
+                # IMPORTANT:
+                # This text is used by the embedding model.
+                # More information = better relevance scores.
+                #
+                text_parts = [
 
-                    "followers": row.followers or 0,
+                    username,
 
-                    "following": row.following or 0,
+                    full_name,
 
-                    "posts_count": row.posts_count or 0,
+                    platform,
 
-                    "avg_likes": row.avg_likes or 0,
+                    category,
 
-                    "avg_comments": row.avg_comments or 0,
+                    bio
 
-                    "engagement_rate": row.engagement_rate or 0,
+                ]
 
-                    "verified": bool(row.verified),
 
-                    "text": profile_text.strip()
+                text = " ".join(
+                    [
+                        part
+                        for part in text_parts
+                        if part
+                    ]
+                )
 
-                })
 
-            print(f"[ProfileBuilder] Built {len(profiles)} profiles")
+                profile = {
+
+                    "id":
+                        influencer.id,
+
+
+                    "username":
+                        username,
+
+
+                    "full_name":
+                        full_name,
+
+
+                    "platform":
+                        platform,
+
+
+                    "category":
+                        category,
+
+
+                    "bio":
+                        bio,
+
+
+                    "followers":
+                        influencer.followers or 0,
+
+
+                    "following":
+                        influencer.following or 0,
+
+
+                    "posts_count":
+                        influencer.posts_count or 0,
+
+
+                    "avg_likes":
+                        influencer.avg_likes or 0,
+
+
+                    "avg_comments":
+                        influencer.avg_comments or 0,
+
+
+                    "engagement_rate":
+                        influencer.engagement_rate or 0,
+
+
+                    "verified":
+                        influencer.verified or 0,
+
+
+                    "text":
+                        text
+
+                }
+
+
+                profiles.append(
+                    profile
+                )
+
+
+            print(
+                f"[ProfileBuilder] Built {len(profiles)} profiles"
+            )
+
 
             return profiles
+
 
         finally:
 

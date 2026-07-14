@@ -35,17 +35,28 @@ class EmbeddingCache:
         )
 
         texts = [
-            p["text"]
+            str(
+                p.get(
+                    "text",
+                    ""
+                )
+            )
             for p in profiles
         ]
 
         usernames = [
-            p["username"]
+            p.get(
+                "username",
+                ""
+            )
             for p in profiles
         ]
 
-        embeddings = EmbeddingEngine.encode(
-            texts
+        embeddings = (
+            EmbeddingEngine
+            .encode(
+                texts
+            )
         )
 
         os.makedirs(
@@ -66,7 +77,8 @@ class EmbeddingCache:
             pickle.dump(
                 {
                     "documents": texts,
-                    "usernames": usernames
+                    "usernames": usernames,
+                    "count": len(texts)
                 },
                 f
             )
@@ -85,9 +97,13 @@ class EmbeddingCache:
     ):
 
         if not (
-            os.path.exists(cls.EMBEDDING_FILE)
+            os.path.exists(
+                cls.EMBEDDING_FILE
+            )
             and
-            os.path.exists(cls.METADATA_FILE)
+            os.path.exists(
+                cls.METADATA_FILE
+            )
         ):
             return False
 
@@ -95,7 +111,7 @@ class EmbeddingCache:
             "[EmbeddingCache] Loading cache..."
         )
 
-        cls.embeddings = np.load(
+        embeddings = np.load(
             cls.EMBEDDING_FILE
         )
 
@@ -104,13 +120,44 @@ class EmbeddingCache:
             "rb"
         ) as f:
 
-            metadata = pickle.load(f)
+            metadata = pickle.load(
+                f
+            )
 
-        cls.documents = metadata["documents"]
-        cls.usernames = metadata["usernames"]
+        documents = metadata.get(
+            "documents",
+            []
+        )
+
+        usernames = metadata.get(
+            "usernames",
+            []
+        )
+
+        # Validate cache consistency
+
+        if (
+            len(embeddings)
+            !=
+            len(documents)
+            or
+            len(documents)
+            !=
+            len(usernames)
+        ):
+
+            print(
+                "[EmbeddingCache] Invalid cache detected."
+            )
+
+            return False
+
+        cls.embeddings = embeddings
+        cls.documents = documents
+        cls.usernames = usernames
 
         print(
-            f"[EmbeddingCache] Loaded {len(cls.documents)} embeddings."
+            f"[EmbeddingCache] Loaded {len(documents)} embeddings."
         )
 
         return True
@@ -119,22 +166,33 @@ class EmbeddingCache:
     def ensure_ready(
         cls
     ):
-        """
-        Loads embeddings if available.
-
-        Otherwise automatically rebuilds them.
-        """
 
         if cls.embeddings is not None:
             return
 
-        if cls.load():
-            return
+        # Build current profiles first
 
         profiles = (
             InfluencerProfileBuilder
             .build_profiles()
         )
+
+        current_count = len(
+            profiles
+        )
+
+        # Try loading cache
+
+        if cls.load():
+
+            if len(cls.documents) == current_count:
+                return
+
+            print(
+                "[EmbeddingCache] Profile count changed. Rebuilding..."
+            )
+
+        # Rebuild cache
 
         cls.build(
             profiles
@@ -150,7 +208,11 @@ class EmbeddingCache:
 
         query_embedding = (
             EmbeddingEngine
-            .encode([query])[0]
+            .encode(
+                [
+                    query
+                ]
+            )[0]
         )
 
         scores = (
@@ -162,3 +224,24 @@ class EmbeddingCache:
         )
 
         return scores
+
+    @classmethod
+    def refresh(
+        cls
+    ):
+        """
+        Force rebuild after new influencers are ingested.
+        """
+
+        cls.embeddings = None
+        cls.documents = None
+        cls.usernames = None
+
+        profiles = (
+            InfluencerProfileBuilder
+            .build_profiles()
+        )
+
+        cls.build(
+            profiles
+        )

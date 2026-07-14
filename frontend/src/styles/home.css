@@ -1,0 +1,45 @@
+.home {
+    min-height: 100vh;
+
+    background: radial-gradient(circle at top, #1d1038, #09090B 70%);
+
+    padding: 32px 70px;
+
+    position: relative;
+
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.home-detective {
+    position: fixed;
+
+    right: 60px;
+    bottom: 40px;
+
+    height: 420px;
+
+    z-index: 2;
+
+    pointer-events: none;
+
+    filter: drop-shadow(0 0 35px rgba(34,211,238,.45));
+
+    animation: floatDetective 5s ease-in-out infinite;
+}
+
+@keyframes floatDetective {
+
+0% {
+    transform: translateY(0);
+}
+
+50% {
+    transform: translateY(-12px);
+}
+
+100% {
+    transform: translateY(0);
+}
+
+}

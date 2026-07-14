@@ -1,12 +1,8 @@
 import pandas as pd
-
+from services.search_pipeline import SearchPipeline
 
 from services.influencer_profile_builder import (
     InfluencerProfileBuilder
-)
-
-from services.embedding_cache import (
-    EmbeddingCache
 )
 
 from services.relevance_engine import (
@@ -26,7 +22,6 @@ from services.explanation_engine import (
 class InfluencerService:
 
 
-
     def find_influencers(
         self,
         topic: str,
@@ -34,22 +29,15 @@ class InfluencerService:
         platform: str = None
     ):
 
+        SearchPipeline.refresh(
+            topic=topic,
+            limit=max(top_n, 20),
+        )
 
         profiles = (
             InfluencerProfileBuilder
             .build_profiles()
         )
-
-
-
-        if not profiles:
-
-            return {
-                "message":
-                "No influencers found."
-            }
-
-
 
         df = pd.DataFrame(
             profiles
@@ -57,12 +45,13 @@ class InfluencerService:
 
 
 
-        # platform filtering
+        # Platform filtering
 
         if platform:
 
             df = df[
                 df["platform"]
+                .astype(str)
                 .str.lower()
                 ==
                 platform.lower()
@@ -71,17 +60,16 @@ class InfluencerService:
 
 
         if df.empty:
-
             return {
-                "message":
-                "No influencers found."
+                "message": "No influencers found."
             }
 
 
 
-        # cleaning
+        # Cleaning
 
         df = df.fillna("")
+
 
         df = df[
             df["username"]
@@ -95,9 +83,7 @@ class InfluencerService:
         df = (
             df
             .drop_duplicates(
-                subset=[
-                    "username"
-                ]
+                subset=["username","platform"]
             )
             .reset_index(
                 drop=True
@@ -106,7 +92,7 @@ class InfluencerService:
 
 
 
-        # relevance
+        # Relevance score
 
         relevance, keywords = (
             RelevanceEngine
@@ -116,62 +102,52 @@ class InfluencerService:
             )
         )
 
+        df["relevance_score"] = relevance
+        # Remove unrelated influencers
+        df = df[
+            df["relevance_score"] >= 0.30
+        ].reset_index(drop=True)
 
-        df["relevance_score"] = (
-            relevance
-        )
 
-
-
-        # influence
+        # Influence score
 
         df["influence_score"] = (
             RankingEngine
-            .calculate_influence(df)
-        )
-
-
-
-        # authority
-
-        df["authority_score"] = (
-            RankingEngine
-            .calculate_authority(
-                df,
-                topic
+            .calculate_influence(
+                df
             )
         )
 
 
 
-        # final score
+        # Final score
 
         df["overall_score"] = (
             RankingEngine
-            .calculate_overall(df)
+            .calculate_overall(
+                df
+            )
         )
 
 
 
-        # confidence
+        # Confidence
 
         df["confidence_score"] = (
             df.apply(
-                ExplanationEngine
-                .confidence_score,
+                ExplanationEngine.confidence_score,
                 axis=1
             )
         )
 
 
 
-        # explanation
+        # Explanation
 
         df["selection_reason"] = (
             df.apply(
                 lambda row:
-                ExplanationEngine
-                .selection_reason(
+                ExplanationEngine.selection_reason(
                     row,
                     topic
                 ),
@@ -181,7 +157,7 @@ class InfluencerService:
 
 
 
-        # ranking
+        # Ranking
 
         df = (
             df
@@ -197,95 +173,76 @@ class InfluencerService:
 
 
 
-        results=[]
+        results = []
 
 
 
-        for idx,row in df.iterrows():
-
+        for idx, row in df.iterrows():
 
             results.append({
 
-                "rank":
-                    idx + 1,
+                "rank": idx + 1,
 
+                "username": row["username"],
 
-                "username":
-                    row["username"],
+                "category": row.get(
+                    "category",
+                    ""
+                ),
 
+                "platform": row.get(
+                    "platform",
+                    ""
+                ),
 
-                "category":
+                "followers": int(
                     row.get(
-                        "category",
-                        ""
+                        "followers",
+                        0
+                    )
+                ),
+
+
+                "relevance_score": round(
+                    float(
+                        row["relevance_score"]
                     ),
+                    4
+                ),
 
 
-                "followers":
-                    int(
-                        row.get(
-                            "followers",
-                            0
-                        )
+                "influence_score": round(
+                    float(
+                        row["influence_score"]
                     ),
+                    4
+                ),
 
 
-                "relevance_score":
-                    round(
-                        float(
-                            row["relevance_score"]
-                        ),
-                        4
+                "overall_score": round(
+                    float(
+                        row["overall_score"]
                     ),
+                    4
+                ),
 
 
-                "influence_score":
-                    round(
-                        float(
-                            row["influence_score"]
-                        ),
-                        4
+                "confidence_score": round(
+                    float(
+                        row["confidence_score"]
                     ),
-
-
-                "authority_score":
-                    round(
-                        float(
-                            row["authority_score"]
-                        ),
-                        4
-                    ),
-
-
-                "overall_score":
-                    round(
-                        float(
-                            row["overall_score"]
-                        ),
-                        4
-                    ),
-
-
-                "confidence_score":
-                    round(
-                        float(
-                            row["confidence_score"]
-                        ),
-                        1
-                    ),
+                    1
+                ),
 
 
                 "selection_reason":
-                    row[
-                        "selection_reason"
-                    ],
+                    row["selection_reason"],
 
 
                 "keywords":
                     keywords[:5]
 
             })
-
 
 
         return results

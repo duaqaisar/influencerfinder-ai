@@ -7,6 +7,7 @@ class RankingEngine:
 
     @staticmethod
     def safe_numeric(series):
+
         return pd.to_numeric(
             series,
             errors="coerce"
@@ -74,7 +75,8 @@ class RankingEngine:
 
         follower_score = (
             cls.log_scale(followers)
-            * 0.40
+            *
+            0.40
         )
 
 
@@ -122,7 +124,6 @@ class RankingEngine:
         Measures niche expertise.
         """
 
-
         keywords = [
             "fitness",
             "gym",
@@ -139,23 +140,23 @@ class RankingEngine:
         ]
 
 
-        scores=[]
+        scores = []
 
 
         for text in df["text"].astype(str):
 
-            text=text.lower()
+            text = text.lower()
 
-            hits=sum(
+            hits = sum(
                 1
                 for k in keywords
                 if k in text
             )
 
+
             scores.append(
                 min(
-                    hits /
-                    len(keywords),
+                    hits / len(keywords),
                     1
                 )
             )
@@ -169,78 +170,6 @@ class RankingEngine:
 
 
     @staticmethod
-    def calculate_authority(
-        df: pd.DataFrame
-    ):
-
-        """
-        Authority score.
-
-        Based on:
-        - verification
-        - followers
-        - expertise
-        """
-
-
-        verified = (
-            pd.to_numeric(
-                df.get(
-                    "verified",
-                    0
-                ),
-                errors="coerce"
-            )
-            .fillna(0)
-            .astype(float)
-        )
-
-
-        followers = pd.to_numeric(
-            df.get(
-                "followers",
-                0
-            ),
-            errors="coerce"
-        ).fillna(0)
-
-
-
-        follower_authority = (
-            RankingEngine.log_scale(
-                followers
-            )
-        )
-
-
-        authority = (
-
-            follower_authority * 0.50
-
-            +
-
-            verified * 0.20
-
-            +
-
-            df.get(
-                "expertise_score",
-                0
-            )
-            *
-            0.30
-
-        )
-
-
-        return authority.clip(
-            0,
-            1
-        )
-
-
-
-    @staticmethod
     def calculate_overall(
         df: pd.DataFrame
     ):
@@ -248,60 +177,61 @@ class RankingEngine:
         """
         Final ranking score.
 
-        Relevance is strongest factor.
+        Relevance is the primary ranking signal.
+
+        Formula:
+
+        Overall =
+            75% Semantic Relevance
+            25% Social Influence
+
+        Weak relevance gets penalized.
         """
 
 
-        relevance = (
-            pd.to_numeric(
-                df.get(
-                    "relevance_score",
-                    0
-                ),
-                errors="coerce"
-            )
-            .fillna(0)
-        )
-
-
-        influence = (
-            pd.to_numeric(
-                df.get(
-                    "influence_score",
-                    0
-                ),
-                errors="coerce"
-            )
-            .fillna(0)
-        )
-
-
-        authority = (
-            pd.to_numeric(
-                df.get(
-                    "authority_score",
-                    0
-                ),
-                errors="coerce"
-            )
-            .fillna(0)
-        )
+        relevance = pd.to_numeric(
+            df.get(
+                "relevance_score",
+                0
+            ),
+            errors="coerce"
+        ).fillna(0)
 
 
 
-        overall=(
+        influence = pd.to_numeric(
+            df.get(
+                "influence_score",
+                0
+            ),
+            errors="coerce"
+        ).fillna(0)
 
-            relevance * 0.50
+
+
+        # Main score
+
+        overall = (
+
+            relevance * 0.75
 
             +
 
             influence * 0.25
 
-            +
-
-            authority * 0.25
-
         )
+
+
+
+        # Relevance gate
+        # Prevent unrelated famous accounts
+        # from ranking high
+
+        overall = overall.where(
+            relevance >= 0.25,
+            overall * 0.20
+        )
+
 
 
         return overall.clip(
