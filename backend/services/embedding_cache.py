@@ -6,20 +6,25 @@ from services.embedding_engine import EmbeddingEngine
 from services.influencer_profile_builder import InfluencerProfileBuilder
 
 
+# Caches influencer text embeddings on disk so they don't need to be recomputed every time
 class EmbeddingCache:
 
+    # Directory where cache files are stored
     CACHE_DIR = "cache"
 
+    # Path to the saved embeddings (numpy array file)
     EMBEDDING_FILE = os.path.join(
         CACHE_DIR,
         "influencer_embeddings.npy"
     )
 
+    # Path to the saved metadata (documents, usernames, count)
     METADATA_FILE = os.path.join(
         CACHE_DIR,
         "influencer_metadata.pkl"
     )
 
+    # In-memory cache state (class-level, shared across all instances)
     embeddings = None
     usernames = None
     documents = None
@@ -34,6 +39,7 @@ class EmbeddingCache:
             "[EmbeddingCache] Building embedding cache..."
         )
 
+        # Extract the profile text for each influencer (used to generate embeddings)
         texts = [
             str(
                 p.get(
@@ -44,6 +50,7 @@ class EmbeddingCache:
             for p in profiles
         ]
 
+        # Extract usernames in the same order as texts
         usernames = [
             p.get(
                 "username",
@@ -52,6 +59,7 @@ class EmbeddingCache:
             for p in profiles
         ]
 
+        # Generate embeddings for all profile texts
         embeddings = (
             EmbeddingEngine
             .encode(
@@ -59,16 +67,19 @@ class EmbeddingCache:
             )
         )
 
+        # Ensure the cache directory exists
         os.makedirs(
             cls.CACHE_DIR,
             exist_ok=True
         )
 
+        # Save the embeddings array to disk
         np.save(
             cls.EMBEDDING_FILE,
             embeddings
         )
 
+        # Save the accompanying metadata (texts, usernames, count) to disk
         with open(
             cls.METADATA_FILE,
             "wb"
@@ -83,6 +94,7 @@ class EmbeddingCache:
                 f
             )
 
+        # Update in-memory cache state
         cls.embeddings = embeddings
         cls.documents = texts
         cls.usernames = usernames
@@ -96,6 +108,7 @@ class EmbeddingCache:
         cls
     ):
 
+        # If either cache file is missing, there's nothing to load
         if not (
             os.path.exists(
                 cls.EMBEDDING_FILE
@@ -111,10 +124,12 @@ class EmbeddingCache:
             "[EmbeddingCache] Loading cache..."
         )
 
+        # Load the embeddings array from disk
         embeddings = np.load(
             cls.EMBEDDING_FILE
         )
 
+        # Load the metadata (documents/usernames) from disk
         with open(
             cls.METADATA_FILE,
             "rb"
@@ -136,6 +151,7 @@ class EmbeddingCache:
 
         # Validate cache consistency
 
+        # Make sure embeddings, documents, and usernames all have matching lengths
         if (
             len(embeddings)
             !=
@@ -152,6 +168,7 @@ class EmbeddingCache:
 
             return False
 
+        # Update in-memory cache state with loaded data
         cls.embeddings = embeddings
         cls.documents = documents
         cls.usernames = usernames
@@ -167,11 +184,13 @@ class EmbeddingCache:
         cls
     ):
 
+        # If embeddings are already loaded in memory, nothing to do
         if cls.embeddings is not None:
             return
 
         # Build current profiles first
 
+        # Rebuild current influencer profiles to compare against cached data
         profiles = (
             InfluencerProfileBuilder
             .build_profiles()
@@ -183,8 +202,10 @@ class EmbeddingCache:
 
         # Try loading cache
 
+        # Attempt to load an existing cache from disk
         if cls.load():
 
+            # If the cached profile count matches current data, cache is still valid
             if len(cls.documents) == current_count:
                 return
 
@@ -194,6 +215,7 @@ class EmbeddingCache:
 
         # Rebuild cache
 
+        # No valid cache found (or outdated) - rebuild from scratch
         cls.build(
             profiles
         )
@@ -204,8 +226,10 @@ class EmbeddingCache:
         query
     ):
 
+        # Make sure embeddings are loaded/built before searching
         cls.ensure_ready()
 
+        # Encode the search query into an embedding vector
         query_embedding = (
             EmbeddingEngine
             .encode(
@@ -215,6 +239,7 @@ class EmbeddingCache:
             )[0]
         )
 
+        # Compute similarity scores between the query and all cached embeddings
         scores = (
             EmbeddingEngine
             .similarity(
@@ -233,15 +258,18 @@ class EmbeddingCache:
         Force rebuild after new influencers are ingested.
         """
 
+        # Clear in-memory cache to force a full rebuild
         cls.embeddings = None
         cls.documents = None
         cls.usernames = None
 
+        # Fetch the latest influencer profiles
         profiles = (
             InfluencerProfileBuilder
             .build_profiles()
         )
 
+        # Rebuild the embedding cache with fresh data
         cls.build(
             profiles
         )
