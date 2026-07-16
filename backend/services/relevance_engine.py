@@ -7,10 +7,11 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 
-
+# Computes how relevant each influencer profile is to a given search topic,
+# using a combination of keyword matching, semantic embeddings, and TF-IDF
 class RelevanceEngine:
 
-
+    # Predefined keyword sets for common topics, used for fast keyword-based matching
     TOPIC_KEYWORDS = {
 
 
@@ -113,19 +114,19 @@ class RelevanceEngine:
         topic
     ):
 
-
+        # Normalize the topic string (lowercase, trimmed)
         topic = (
             str(topic)
             .lower()
             .strip()
         )
 
-
+        # If the topic matches a predefined category, use its keyword list
         if topic in cls.TOPIC_KEYWORDS:
 
             return cls.TOPIC_KEYWORDS[topic]
 
-
+        # Otherwise, fall back to splitting the topic string into individual words as keywords
         return topic.split()
 
 
@@ -137,12 +138,12 @@ class RelevanceEngine:
         series
     ):
 
-
+        # Min-max normalize a series to a 0-1 range
         minimum = series.min()
 
         maximum = series.max()
 
-
+        # Avoid division by zero if all values are the same
         if maximum == minimum:
 
             return pd.Series(
@@ -169,7 +170,7 @@ class RelevanceEngine:
         keywords
     ):
 
-
+        # Score each text based on how many of the given keywords it contains
         scores = []
 
 
@@ -179,7 +180,7 @@ class RelevanceEngine:
             text = text.lower()
 
 
-
+            # Count how many keywords appear in this text
             hits = sum(
 
                 1
@@ -191,7 +192,7 @@ class RelevanceEngine:
             )
 
 
-
+            # Score as fraction of total keywords matched
             score = (
 
                 hits /
@@ -201,7 +202,7 @@ class RelevanceEngine:
             )
 
 
-
+            # Cap the score at 1 (safety, though it shouldn't normally exceed it)
             scores.append(
 
                 min(
@@ -234,14 +235,14 @@ class RelevanceEngine:
         topic
     ):
 
-
+        # Score each text based on semantic (embedding) similarity to the topic
         try:
 
-
+            # Make sure embeddings are built/loaded before searching
             EmbeddingCache.ensure_ready()
 
 
-
+            # Encode the topic string into an embedding vector
             query_embedding = (
 
                 EmbeddingEngine
@@ -254,7 +255,7 @@ class RelevanceEngine:
             )
 
 
-
+            # Compute similarity between the topic embedding and all cached profile embeddings
             scores = (
 
                 EmbeddingEngine
@@ -266,7 +267,7 @@ class RelevanceEngine:
             )
 
 
-
+            # Align scores with the texts' index, truncating to match length
             scores = pd.Series(
 
                 scores[:len(texts)],
@@ -276,7 +277,7 @@ class RelevanceEngine:
             )
 
 
-
+            # Normalize scores to a 0-1 range
             return cls.normalize(
                 scores
             )
@@ -285,7 +286,7 @@ class RelevanceEngine:
 
         except Exception as e:
 
-
+            # If semantic scoring fails for any reason, log the error and return all zeros
             print(
                 "[Semantic Error]",
                 e
@@ -314,10 +315,10 @@ class RelevanceEngine:
         topic
     ):
 
-
+        # Score each text based on TF-IDF cosine similarity to the topic
         try:
 
-
+            # Build a text corpus from all profile texts
             corpus = (
 
                 texts
@@ -328,7 +329,7 @@ class RelevanceEngine:
             )
 
 
-
+            # Configure a TF-IDF vectorizer using unigrams and bigrams, ignoring English stopwords
             vectorizer = TfidfVectorizer(
 
                 stop_words="english",
@@ -338,7 +339,7 @@ class RelevanceEngine:
             )
 
 
-
+            # Fit the vectorizer on the corpus plus the topic (appended as the last "document")
             matrix = (
 
                 vectorizer
@@ -351,11 +352,11 @@ class RelevanceEngine:
             )
 
 
-
+            # The last row of the matrix corresponds to the topic's vector
             query_vector = matrix[-1]
 
 
-
+            # Compute cosine similarity between the topic vector and all profile vectors
             scores = (
 
                 cosine_similarity(
@@ -382,8 +383,7 @@ class RelevanceEngine:
 
         except Exception:
 
-
-
+            # If TF-IDF scoring fails for any reason, return all zeros
             return pd.Series(
 
                 [0] * len(texts),
@@ -406,8 +406,7 @@ class RelevanceEngine:
         topic
     ):
 
-
-
+        # Get the keyword list for this topic
         keywords = (
 
             cls.get_keywords(
@@ -417,7 +416,7 @@ class RelevanceEngine:
         )
 
 
-
+        # Compute raw keyword-based score
         keyword = (
 
             cls.keyword_score(
@@ -436,7 +435,7 @@ class RelevanceEngine:
         keyword = cls.normalize(keyword)
 
 
-
+        # Compute semantic (embedding-based) score
         semantic = (
 
             cls.semantic_score(
@@ -450,7 +449,7 @@ class RelevanceEngine:
         )
 
 
-
+        # Compute TF-IDF based score
         tfidf = (
 
             cls.tfidf_score(
@@ -471,7 +470,7 @@ class RelevanceEngine:
 
         # Final relevance score
         # Keyword matching is stronger to avoid unrelated influencers
-
+        # Weighted combination of all three scoring methods
         relevance = (
 
             semantic * 0.45
@@ -495,7 +494,7 @@ class RelevanceEngine:
             relevance * 0.15
         )
 
-
+        # Return final clipped relevance scores along with the keyword list used
         return (
 
             relevance.clip(
@@ -520,8 +519,7 @@ class RelevanceEngine:
         topic
     ):
 
-
-
+        # Simpler relevance calculation based purely on keyword matching (no semantic/tfidf)
         keywords = (
 
             cls.get_keywords(
@@ -529,7 +527,6 @@ class RelevanceEngine:
             )
 
         )
-
 
 
         scores = (
