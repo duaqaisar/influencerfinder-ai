@@ -18,9 +18,8 @@ from services.explanation_engine import (
 )
 
 
-
+# Main service that orchestrates the full influencer search/ranking pipeline
 class InfluencerService:
-
 
     def find_influencers(
         self,
@@ -29,24 +28,27 @@ class InfluencerService:
         platform: str = None
     ):
 
+        # Refresh scraped/search data related to the topic before building profiles
         SearchPipeline.refresh(
             topic=topic,
             limit=max(top_n, 20),
         )
 
+        # Build combined text profiles for all influencers
         profiles = (
             InfluencerProfileBuilder
             .build_profiles()
         )
 
+        # Convert profiles into a DataFrame for easier filtering/scoring
         df = pd.DataFrame(
             profiles
         )
 
 
-
         # Platform filtering
 
+        # If a platform filter was provided, keep only matching rows (case-insensitive)
         if platform:
 
             df = df[
@@ -58,19 +60,19 @@ class InfluencerService:
             ]
 
 
-
+        # If no influencers remain after filtering, return an empty-result message
         if df.empty:
             return {
                 "message": "No influencers found."
             }
 
 
-
         # Cleaning
 
+        # Replace any NaN values with empty strings
         df = df.fillna("")
 
-
+        # Drop rows with invalid/too-short usernames
         df = df[
             df["username"]
             .astype(str)
@@ -79,7 +81,7 @@ class InfluencerService:
         ]
 
 
-
+        # Remove duplicate influencers (same username + platform combo)
         df = (
             df
             .drop_duplicates(
@@ -91,9 +93,9 @@ class InfluencerService:
         )
 
 
-
         # Relevance score
 
+        # Compute relevance scores (and extracted keywords) comparing each profile's text to the topic
         relevance, keywords = (
             RelevanceEngine
             .hybrid_relevance(
@@ -104,6 +106,7 @@ class InfluencerService:
 
         df["relevance_score"] = relevance
         # Remove unrelated influencers
+        # Filter out influencers below the minimum relevance threshold
         df = df[
             df["relevance_score"] >= 0.30
         ].reset_index(drop=True)
@@ -111,6 +114,7 @@ class InfluencerService:
 
         # Influence score
 
+        # Calculate an influence score based on followers/engagement metrics
         df["influence_score"] = (
             RankingEngine
             .calculate_influence(
@@ -119,9 +123,9 @@ class InfluencerService:
         )
 
 
-
         # Final score
 
+        # Combine relevance + influence into a single overall ranking score
         df["overall_score"] = (
             RankingEngine
             .calculate_overall(
@@ -130,9 +134,9 @@ class InfluencerService:
         )
 
 
-
         # Confidence
 
+        # Calculate a confidence score for each influencer's result reliability
         df["confidence_score"] = (
             df.apply(
                 ExplanationEngine.confidence_score,
@@ -141,9 +145,9 @@ class InfluencerService:
         )
 
 
-
         # Explanation
 
+        # Generate a human-readable reason for why each influencer was selected
         df["selection_reason"] = (
             df.apply(
                 lambda row:
@@ -156,9 +160,9 @@ class InfluencerService:
         )
 
 
-
         # Ranking
 
+        # Sort by overall score (highest first) and keep only the top N results
         df = (
             df
             .sort_values(
@@ -172,16 +176,15 @@ class InfluencerService:
         )
 
 
-
+        # Build the final list of result dictionaries to return
         results = []
-
 
 
         for idx, row in df.iterrows():
 
             results.append({
 
-                "rank": idx + 1,
+                "rank": idx + 1,  # Rank position (1-based)
 
                 "username": row["username"],
 
@@ -238,11 +241,11 @@ class InfluencerService:
                 "selection_reason":
                     row["selection_reason"],
 
-
+                # Top 5 keywords extracted during relevance scoring
                 "keywords":
                     keywords[:5]
 
             })
 
-
+        # Return the final ranked list of influencer results
         return results
